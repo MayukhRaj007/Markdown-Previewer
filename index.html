@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown Previewer</title>
+<style>
+  :root {
+    --bg-app:       #1e1f26;
+    --bg-pane:      #25262e;
+    --bg-toolbar:   #1a1b21;
+    --border:       #34353f;
+    --text-main:    #e4e4e9;
+    --text-dim:     #8b8c98;
+    --accent:       #7c9eff;
+    --accent-dim:   #4a5d99;
+    --code-bg:      #14151a;
+    --font-mono:    'SF Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+    --font-sans:    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg-app);
+    font-family: var(--font-sans);
+    color: var(--text-main);
+    overflow: hidden;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ── Toolbar ───────────────────────────────────────── */
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px;
+    background: var(--bg-toolbar);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .toolbar h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0;
+    color: var(--text-main);
+  }
+
+  .toolbar-right {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .btn:hover {
+    border-color: var(--accent-dim);
+    color: var(--text-main);
+  }
+
+  .btn.primary {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+  }
+
+  .btn.primary:hover {
+    background: var(--accent-dim);
+    color: var(--text-main);
+  }
+
+  /* ── Split panes ───────────────────────────────────── */
+
+  .panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg-pane);
+  }
+
+  .pane + .pane {
+    border-left: 1px solid var(--border);
+  }
+
+  .pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .char-count {
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+  }
+
+  /* Editor */
+
+  #editor {
+    flex: 1;
+    width: 100%;
+    resize: none;
+    border: none;
+    outline: none;
+    background: var(--bg-pane);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.65;
+    padding: 18px 20px;
+    tab-size: 2;
+  }
+
+  #editor::placeholder {
+    color: var(--text-dim);
+  }
+
+  /* Preview */
+
+  #preview {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 28px 40px;
+    font-size: 14.5px;
+    line-height: 1.7;
+  }
+
+  #preview h1, #preview h2, #preview h3 {
+    color: var(--text-main);
+    margin-top: 1.4em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+  }
+
+  #preview h1 { font-size: 1.9em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+  #preview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+  #preview h3 { font-size: 1.2em; }
+  #preview h1:first-child, #preview h2:first-child, #preview h3:first-child { margin-top: 0; }
+
+  #preview p { margin: 0.8em 0; color: var(--text-main); }
+
+  #preview a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-dim); }
+  #preview a:hover { border-bottom-color: var(--accent); }
+
+  #preview strong { color: #fff; font-weight: 600; }
+  #preview em { color: #d4d4e0; }
+
+  #preview code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--code-bg);
+    color: #f0a868;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+  }
+
+  #preview pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+
+  #preview pre code {
+    background: none;
+    padding: 0;
+    color: #d4d4e0;
+    font-size: 0.85em;
+    line-height: 1.55;
+  }
+
+  #preview blockquote {
+    margin: 1em 0;
+    padding: 0.3em 1em;
+    border-left: 3px solid var(--accent-dim);
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  #preview ul, #preview ol {
+    padding-left: 1.5em;
+    margin: 0.8em 0;
+  }
+
+  #preview li { margin: 0.3em 0; }
+
+  #preview hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2em 0;
+  }
+
+  #preview table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    font-size: 0.92em;
+  }
+
+  #preview th, #preview td {
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    text-align: left;
+  }
+
+  #preview th {
+    background: var(--bg-toolbar);
+    color: var(--text-main);
+  }
+
+  #preview img {
+    max-width: 100%;
+    border-radius: 6px;
+  }
+
+  #preview .empty-state {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  /* Scrollbar styling */
+  #preview::-webkit-scrollbar, #editor::-webkit-scrollbar {
+    width: 10px;
+  }
+  #preview::-webkit-scrollbar-thumb, #editor::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 5px;
+  }
+
+  /* Mobile */
+  @media (max-width: 720px) {
+    .panes { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    .pane + .pane { border-left: none; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <span class="logo-dot"></span>
+      <h1>Markdown Previewer</h1>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn" id="sampleBtn">Load sample</button>
+      <button class="btn" id="clearBtn">Clear</button>
+      <button class="btn primary" id="copyBtn">Copy HTML</button>
+    </div>
+  </div>
+
+  <div class="panes">
+
+    <div class="pane">
+      <div class="pane-header">
+        <span>Markdown</span>
+        <span class="char-count" id="charCount">0 characters</span>
+      </div>
+      <textarea id="editor" placeholder="# Start typing...
+
+Write some **markdown** here and watch it render live on the right.
+
+- Supports headings
+- Bold and *italic*
+- `inline code`
+- Lists, links, and more"></textarea>
+    </div>
+
+    <div class="pane">
+      <div class="pane-header">
+        <span>Preview</span>
+        <span class="char-count" id="renderTime">—</span>
+      </div>
+      <div id="preview"><p class="empty-state">Your rendered Markdown will appear here.</p></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const editor      = document.getElementById('editor');
+  const preview      = document.getElementById('preview');
+  const charCount     = document.getElementById('charCount');
+  const renderTime    = document.getElementById('renderTime');
+  const sampleBtn      = document.getElementById('sampleBtn');
+  const clearBtn        = document.getElementById('clearBtn');
+  const copyBtn          = document.getElementById('copyBtn');
+
+  const STORAGE_KEY = 'markdown-previewer-content';
+
+  // ── Escape HTML to prevent injection from user-typed content ──────────
+  // Anything that isn't an intentional Markdown construct gets escaped
+  // BEFORE we apply Markdown rules. This is the core defense against XSS
+  // in a tool that turns user text into innerHTML.
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ── Minimal Markdown → HTML parser ─────────────────────────────────────
+  // Hand-written on purpose (no library) so the logic is fully visible.
+  // Order matters: block-level elements first, then inline elements
+  // inside whatever text remains.
+  function parseMarkdown(src) {
+    if (!src.trim()) {
+      return '<p class="empty-state">Your rendered Markdown will appear here.</p>';
+    }
+
+    // Escape first — everything below operates on safe text only
+    let text = escapeHtml(src);
+
+    // Extract fenced code blocks first so their contents are never
+    // touched by other rules (e.g. a # inside a code block shouldn't
+    // become a heading).
+    const codeBlocks = [];
+    text = text.replace(/```([a-zA-Z0-9]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      const token = `\u0000CODEBLOCK${codeBlocks.length}\u0000`;
+      codeBlocks.push(`<pre><code>${code.trimEnd()}</code></pre>`);
+      return token;
+    });
+
+    const lines = text.split('\n');
+    const html = [];
+    let inList = null;     // 'ul' | 'ol' | null
+    let inBlockquote = false;
+    let paragraphBuffer = [];
+
+    function flushParagraph() {
+      if (paragraphBuffer.length) {
+        html.push(`<p>${inline(paragraphBuffer.join(' '))}</p>`);
+        paragraphBuffer = [];
+      }
+    }
+
+    function closeList() {
+      if (inList) {
+        html.push(`</${inList}>`);
+        inList = null;
+      }
+    }
+
+    for (let raw of lines) {
+      const line = raw;
+
+      // Blank line — paragraph/list boundary
+      if (line.trim() === '') {
+        flushParagraph();
+        closeList();
+        inBlockquote = false;
+        continue;
+      }
+
+      // Headings
+      const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
+      if (headingMatch) {
+        flushParagraph();
+        closeList();
+        const level = headingMatch[1].length;
+        html.push(`<h${level}>${inline(headingMatch[2])}</h${level}>`);
+        continue;
+      }
+
+      // Horizontal rule
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+        flushParagraph();
+        closeList();
+        html.push('<hr>');
+        continue;
+      }
+
+      // Blockquote
+      const quoteMatch = line.match(/^&gt;\s?(.*)$/);
+      if (quoteMatch) {
+        flushParagraph();
+        closeList();
+        if (!inBlockquote) {
+          html.push('<blockquote>');
+          inBlockquote = true;
+        }
+        html.push(`<p>${inline(quoteMatch[1])}</p>`);
+        continue;
+      } else if (inBlockquote) {
+        html.push('</blockquote>');
+        inBlockquote = false;
+      }
+
+      // Unordered list
+      const ulMatch = line.match(/^[\-\*]\s+(.*)$/);
+      if (ulMatch) {
+        flushParagraph();
+        if (inList !== 'ul') {
+          closeList();
+          html.push('<ul>');
+          inList = 'ul';
+        }
+        html.push(`<li>${inline(ulMatch[1])}</li>`);
+        continue;
+      }
+
+      // Ordered list
+      const olMatch = line.match(/^\d+\.\s+(.*)$/);
+      if (olMatch) {
+        flushParagraph();
+        if (inList !== 'ol') {
+          closeList();
+          html.push('<ol>');
+          inList = 'ol';
+        }
+        html.push(`<li>${inline(olMatch[1])}</li>`);
+        continue;
+      }
+
+      // Default — accumulate into paragraph
+      closeList();
+      paragraphBuffer.push(line.trim());
+    }
+
+    flushParagraph();
+    closeList();
+    if (inBlockquote) html.push('</blockquote>');
+
+    let result = html.join('\n');
+
+    // Restore code blocks
+    result = result.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_, i) => codeBlocks[Number(i)]);
+
+    return result;
+  }
+
+  // ── Inline rules: bold, italic, code, links ────────────────────────────
+  function inline(text) {
+    return text
+      // inline code — process first so markers inside don't get re-parsed
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // bold
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+      // italic
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/_([^_]+)_/g, '<em>$1</em>')
+      // links  [text](url)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  }
+
+  // ── Debounce: wait until typing pauses before re-rendering ─────────────
+  // Re-parsing on every single keystroke is wasteful. We wait 80ms after
+  // the last keystroke — fast enough to feel instant, but avoids
+  // redundant work during rapid typing.
+  function debounce(fn, delay) {
+    let timer = null;
+    return function (...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+
+  function render() {
+    const start = performance.now();
+    const value = editor.value;
+
+    preview.innerHTML = parseMarkdown(value);
+    charCount.textContent = `${value.length} character${value.length === 1 ? '' : 's'}`;
+
+    const elapsed = (performance.now() - start).toFixed(1);
+    renderTime.textContent = `rendered in ${elapsed}ms`;
+
+    localStorage.setItem(STORAGE_KEY, value);
+  }
+
+  const debouncedRender = debounce(render, 80);
+  editor.addEventListener('input', debouncedRender);
+
+  // ── Toolbar actions ──────────────────────────────────────────────────
+
+  const SAMPLE = `# Markdown Previewer
+
+A **live** markdown renderer built with *vanilla* JavaScript — no libraries.
+
+## Features
+
+- Real-time preview as you type
+- Supports \`inline code\` and fenced code blocks
+- [Links](https://github.com) work too
+- Headings, lists, and blockquotes
+
+## Code example
+
+\`\`\`
+function hello() {
+  console.log("Hello, world!");
+}
+\`\`\`
+
+> Built as project #4 of a 50-project GitHub portfolio challenge.
+
+---
+
+1. Type in the left pane
+2. Watch it render on the right
+3. Click "Copy HTML" to grab the output
+`;
+
+  sampleBtn.addEventListener('click', () => {
+    editor.value = SAMPLE;
+    render();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    editor.value = '';
+    render();
+    editor.focus();
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(preview.innerHTML);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = original; }, 1200);
+    } catch (err) {
+      alert('Clipboard access denied by browser.');
+    }
+  });
+
+  // ── Restore previous session from localStorage ─────────────────────────
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    editor.value = saved;
+  }
+  render();
+
+})();
+</script>
+
+</body>
+</html>

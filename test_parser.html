@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<!--
+  Test runner for the Markdown parser logic.
+
+  This is a plain HTML file (no Node/npm needed) — open it directly in
+  any browser to run all tests. It loads index.html's parser logic by
+  re-declaring the same pure functions and checking their output.
+
+  Why not Jest? This project deliberately has zero build tooling and
+  zero dependencies — adding npm/Jest just to test 100 lines of logic
+  would contradict the "vanilla JS, no build step" goal of the project.
+  A self-contained HTML test page keeps that promise while still giving
+  us real, repeatable, visible test coverage.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Markdown Previewer — Tests</title>
+<style>
+  body { font-family: monospace; background: #1e1f26; color: #e4e4e9; padding: 24px; }
+  .pass { color: #4ade80; }
+  .fail { color: #f87171; }
+  .summary { margin-top: 16px; padding-top: 16px; border-top: 1px solid #34353f; font-weight: bold; }
+  .detail { color: #8b8c98; font-size: 12px; margin-left: 20px; }
+</style>
+</head>
+<body>
+<h2>Markdown Previewer — Test Suite</h2>
+<div id="results">Running...</div>
+
+<script>
+// ── Pure functions under test (kept identical to index.html) ──────────────
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function inline(text) {
+  return text
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_]+)_/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function parseMarkdown(src) {
+  if (!src.trim()) {
+    return '<p class="empty-state">Your rendered Markdown will appear here.</p>';
+  }
+
+  let text = escapeHtml(src);
+
+  const codeBlocks = [];
+  text = text.replace(/```([a-zA-Z0-9]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const token = `\u0000CODEBLOCK${codeBlocks.length}\u0000`;
+    codeBlocks.push(`<pre><code>${code.trimEnd()}</code></pre>`);
+    return token;
+  });
+
+  const lines = text.split('\n');
+  const html = [];
+  let inList = null;
+  let inBlockquote = false;
+  let paragraphBuffer = [];
+
+  function flushParagraph() {
+    if (paragraphBuffer.length) {
+      html.push(`<p>${inline(paragraphBuffer.join(' '))}</p>`);
+      paragraphBuffer = [];
+    }
+  }
+  function closeList() {
+    if (inList) { html.push(`</${inList}>`); inList = null; }
+  }
+
+  for (let raw of lines) {
+    const line = raw;
+    if (line.trim() === '') { flushParagraph(); closeList(); inBlockquote = false; continue; }
+
+    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph(); closeList();
+      const level = headingMatch[1].length;
+      html.push(`<h${level}>${inline(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      flushParagraph(); closeList();
+      html.push('<hr>');
+      continue;
+    }
+
+    const quoteMatch = line.match(/^&gt;\s?(.*)$/);
+    if (quoteMatch) {
+      flushParagraph(); closeList();
+      if (!inBlockquote) { html.push('<blockquote>'); inBlockquote = true; }
+      html.push(`<p>${inline(quoteMatch[1])}</p>`);
+      continue;
+    } else if (inBlockquote) {
+      html.push('</blockquote>');
+      inBlockquote = false;
+    }
+
+    const ulMatch = line.match(/^[\-\*]\s+(.*)$/);
+    if (ulMatch) {
+      flushParagraph();
+      if (inList !== 'ul') { closeList(); html.push('<ul>'); inList = 'ul'; }
+      html.push(`<li>${inline(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    const olMatch = line.match(/^\d+\.\s+(.*)$/);
+    if (olMatch) {
+      flushParagraph();
+      if (inList !== 'ol') { closeList(); html.push('<ol>'); inList = 'ol'; }
+      html.push(`<li>${inline(olMatch[1])}</li>`);
+      continue;
+    }
+
+    closeList();
+    paragraphBuffer.push(line.trim());
+  }
+
+  flushParagraph(); closeList();
+  if (inBlockquote) html.push('</blockquote>');
+
+  let result = html.join('\n');
+  result = result.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_, i) => codeBlocks[Number(i)]);
+  return result;
+}
+
+// ── Test cases ──────────────────────────────────────────────────────────
+
+const tests = [
+  { name: 'H1 heading', md: '# Hello World', expectContains: '<h1>Hello World</h1>' },
+  { name: 'H2 heading', md: '## Subheading', expectContains: '<h2>Subheading</h2>' },
+  { name: 'H3 heading', md: '### Small heading', expectContains: '<h3>Small heading</h3>' },
+  { name: 'Bold with **', md: 'This is **bold** text', expectContains: '<strong>bold</strong>' },
+  { name: 'Bold with __', md: 'This is __bold__ text', expectContains: '<strong>bold</strong>' },
+  { name: 'Italic with *', md: 'This is *italic* text', expectContains: '<em>italic</em>' },
+  { name: 'Inline code', md: 'Use `code` here', expectContains: '<code>code</code>' },
+  { name: 'Link', md: '[Click](https://example.com)', expectContains: '<a href="https://example.com"' },
+  { name: 'Unordered list (3 items)', md: '- one\n- two\n- three', expectContains: '<li>one</li>\n<li>two</li>\n<li>three</li>' },
+  { name: 'Ordered list', md: '1. first\n2. second', expectContains: '<ol>\n<li>first</li>\n<li>second</li>\n</ol>' },
+  { name: 'Blockquote', md: '> A quote', expectContains: '<blockquote>\n<p>A quote</p>\n</blockquote>' },
+  { name: 'Fenced code block', md: '```\nconst x = 1;\n```', expectContains: '<pre><code>const x = 1;</code></pre>' },
+  { name: 'Horizontal rule', md: '---', expectContains: '<hr>' },
+  { name: 'XSS: script tag is escaped, not executed', md: '<script>alert(1)</script>', expectNotContains: '<script>alert' },
+  { name: 'XSS: event handler attr is inert text', md: '<img src=x onerror=alert(1)>', expectContains: '&lt;img' },
+  { name: 'Empty input shows placeholder', md: '', expectContains: 'empty-state' },
+  { name: 'Code block content is not re-parsed as markdown', md: '```\n# not a heading\n```', expectNotContains: '<h1>not' },
+  { name: 'Mixed bold + italic same line', md: '**bold** and *italic*', expectContains: '<strong>bold</strong>' },
+];
+
+// ── Runner ─────────────────────────────────────────────────────────────
+
+function runTests() {
+  let pass = 0, fail = 0;
+  const lines = [];
+
+  for (const t of tests) {
+    const result = parseMarkdown(t.md);
+    let ok;
+    if (t.expectContains) ok = result.includes(t.expectContains);
+    else if (t.expectNotContains) ok = !result.includes(t.expectNotContains);
+
+    if (ok) {
+      pass++;
+      lines.push(`<div class="pass">✅ ${t.name}</div>`);
+    } else {
+      fail++;
+      lines.push(`<div class="fail">❌ ${t.name}</div><div class="detail">input: ${JSON.stringify(t.md)}<br>output: ${JSON.stringify(result)}</div>`);
+    }
+  }
+
+  lines.push(`<div class="summary ${fail === 0 ? 'pass' : 'fail'}">${pass}/${pass + fail} passed</div>`);
+  document.getElementById('results').innerHTML = lines.join('\n');
+}
+
+runTests();
+</script>
+</body>
+</html>
