@@ -67,4 +67,4 @@ Tools like `marked.js` or `markdown-it` are what you'd use in production. This p
 
 ---
 
-Part of my [50 GitHub Projects](https://github.com/YOUR_USERNAME) portfolio challenge.
+Part of my [50 GitHub Projects](https://github.com/MayukhRaj007) portfolio challenge.
