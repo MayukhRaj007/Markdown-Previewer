@@ -4,7 +4,7 @@
 
 A live, browser-based Markdown previewer built with **vanilla HTML, CSS, and JavaScript** — zero dependencies, zero build step. Type Markdown on the left, see it rendered on the right, in real time.
 
-**[Live demo →](https://YOUR_USERNAME.github.io/markdown-previewer/)**
+**[Live demo →](https://mayukhraj007.github.io/Markdown-Previewer/)**
 
 ## Features
 
